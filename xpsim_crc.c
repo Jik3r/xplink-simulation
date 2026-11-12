@@ -42,15 +42,6 @@ static void print_hex(const char *label, const uint8_t *b, int n)
     printf("\n");
 }
 
-// same checksum rule XPLink uses: sum of the first 9 bytes, mod 256
-static uint8_t checksum_of(const xp_packet_t *p)
-{
-    int sum = SYS_ID + (uint8_t)p->type;
-    for (int i = 0; i < 7; i++)
-        sum += (p->data >> (i * 8)) & 0xFF;
-    return (uint8_t)(sum % 256);
-}
-
 // fewest bytes needed to hold the value (at least 1)
 static int useful_bytes(uint64_t v)
 {
@@ -141,8 +132,8 @@ static int flight(void)
         {
             ok++;
             const char *name = (pk.type >= 0 && pk.type < NTYPES) ? TYPE_NAMES[pk.type] : "???";
-            printf("[flight] ACK  #%ld  from=0x%02X  type=%s  value=%llu  checksum=0x%02X OK\n",
-                   ok, pk.sender_id, name, (unsigned long long)pk.data, checksum_of(&pk));
+            printf("[flight] ACK  #%ld  from=0x%02X  type=%s  value=%llu  checksum OK\n",
+                   ok, pk.sender_id, name, (unsigned long long)pk.data);
         }
         else if (b == END_BYTE)
         {

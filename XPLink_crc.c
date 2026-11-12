@@ -9,6 +9,20 @@ static uint8_t BUFFER[BUFFERSIZE];
 static uint8_t BUFF_HEAD = 0;
 static uint8_t PREV_END = 0;
 
+// CRC-8 (polynomial 0x07) over len bytes. Starts at 0xFF instead of 0 so an
+// all-zero frame can never look valid.
+static uint8_t crc8(const uint8_t *data, int len)
+{
+    uint8_t crc = 0xFF;
+    for (int i = 0; i < len; i++)
+    {
+        crc ^= data[i];
+        for (int b = 0; b < 8; b++)
+            crc = (crc & 0x80) ? (uint8_t)((crc << 1) ^ 0x07) : (uint8_t)(crc << 1);
+    }
+    return crc;
+}
+
 int XPLINK_PACK(uint8_t *output, xp_packet_t *xppack)
 {
     uint8_t packet[10];
@@ -25,40 +39,15 @@ int XPLINK_PACK(uint8_t *output, xp_packet_t *xppack)
     // Packet type
     packet[1] = xppack->type;
 
-    var datapack(int datanumber) {
-          for (int i = 0; i < datanumber; i++)
+    // Pack 7 least significant bytes of the value (little-endian)
+    for (int i = 0; i < 7; i++)
     {
         packet[2 + i] = (xppack->data >> (i * 8)) & 0xFF;
     }
-    }
+    //switch statement for the different types of packets?
 
-    // Pack 7 least significant bytes of the value (little-endian)
-    
-    switch (xppack->type)
-    {
-        case ACC:
-        datapack(6);
-        break;
-        case TEMP1, TEMP2, TEMP3, TEMP4:
-        datapack(4);
-        break;
-        case PRESSURE1, PRESSURE2, PRESSURE3, PRESSURE4, PRESSURE5, PRESSURE6, PRESSURE7, PRESSURE8, PRESSURE9, PRESSURE10, PRESSURE11, PRESSURE12:
-        datapack(4);
-        break;
-        case SOLENOID:
-        datapack(1);
-        break;
-    }
-
-    // get sum of packet
-    int sum = 0;
-    for (int i = 0; i < 9; i++)
-    {
-        sum += packet[i];
-    }
-
-    // checksum
-    packet[9] = sum % 256;
+    // checksum (CRC-8 over the first 9 bytes)
+    packet[9] = crc8(packet, 9);
     // what could be a better checksum?
 
     /*
@@ -78,8 +67,6 @@ int XPLINK_PACK(uint8_t *output, xp_packet_t *xppack)
 
     return 1;
 }
-
-
 
 uint8_t XPLINK_UNPACK(xp_packet_t *output, uint8_t byte)
 {
@@ -123,12 +110,7 @@ uint8_t XPLINK_UNPACK(xp_packet_t *output, uint8_t byte)
         COBS_UNPACK(raw, BUFFER, BUFF_HEAD, END_BYTE);
 
         // Checksum
-        int sum = 0;
-        for (int i = 0; i < 9; i++)
-        {
-            sum += raw[i];
-        }
-        uint8_t calculated_checksum = sum % 256;
+        uint8_t calculated_checksum = crc8(raw, 9);
 
         if (calculated_checksum != raw[9])
         {
